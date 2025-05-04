@@ -34,17 +34,6 @@ struct MemoDaysApp: App {
     }
 }
 
-extension Calendar {
-    func daysBetween(_ start: Date, _ end: Date) -> Int {
-        // 将两个日期都调整到上午6点
-        let adjustedStart = date(bySettingHour: 6, minute: 0, second: 0, of: start)!
-        let adjustedEnd = date(bySettingHour: 6, minute: 0, second: 0, of: end)!
-        // 计算天数差时+1天补偿
-        return dateComponents([.day], from: adjustedStart, to: adjustedEnd).day!
-    }
-}
-
-
 // MARK: - 定时器管理类
 
 class MidnightRefreshManager: ObservableObject{
@@ -941,4 +930,3 @@ struct TaggedEventsView: View {
     ContentView()
         .modelContainer(for: Event.self)
 }
-
