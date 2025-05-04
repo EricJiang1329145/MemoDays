@@ -139,7 +139,6 @@ final class Event {
     var anniversaryYears: Int {
         Calendar.current.dateComponents([.year], from: startDate, to: Date()).year ?? 0
     }
-    
     var anniversaryDays: Int {
         let years = anniversaryYears
         guard years > 0 else { return totalDaysPassed }
@@ -478,6 +477,8 @@ struct EventCardView: View, Equatable {
         lhs.event.isPinned == rhs.event.isPinned
     }
     
+    @State private var isPressed = false
+    
     var body: some View {
         NavigationLink(value: event) {
             VStack(alignment: .leading, spacing: 12) {
@@ -488,9 +489,17 @@ struct EventCardView: View, Equatable {
             }
             .padding()
             .background(.ultraThinMaterial)
+            .scaleEffect(isPressed ? 0.95 : 1.0)
+            .opacity(isPressed ? 0.8 : 1.0)
+            .animation(.interactiveSpring(), value: isPressed)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .shadow(radius: 2)
             .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in isPressed = true }
+                    .onEnded { _ in isPressed = false }
+            )
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -640,11 +649,11 @@ struct AddEventView: View {
                 
                 Section("备注") {
                     TextEditor(text: $notes)
-                        .frame(minHeight: 100)
+                        .frame(minHeight: 150) // 增加备注框的最小高度
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(.ultraThinMaterial)
+            .background(Color(.systemGroupedBackground)) // 更改背景颜色
             .navigationTitle(editingEvent == nil ? "新建事件" : "编辑事件")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -706,24 +715,15 @@ struct AddEventView: View {
 
 // MARK: - 详情视图
 struct EventDetailView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var context
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    
     let event: Event
-    @State private var showingEdit = false
-    @State private var showingDeleteConfirm = false
-    
-    private var gridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: sizeClass == .compact ? 200 : 300))]
-    }
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 20) {
                 headerSection
-                datesSection
-                progressSection
+                dateInfoSection
+                categorySection
                 notesSection
             }
             .padding()
@@ -732,106 +732,53 @@ struct EventDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("编辑", systemImage: "pencil") { showingEdit = true }
-                    Button("删除", systemImage: "trash", role: .destructive) { showingDeleteConfirm = true }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
-        }
-        .sheet(isPresented: $showingEdit) {
-            AddEventView(editingEvent: event)
-                .presentationDetents([.height(500)])
-                .presentationDragIndicator(.visible)
-                .presentationCornerRadius(20)
-        }
-        .confirmationDialog("删除事件", isPresented: $showingDeleteConfirm) {
-            Button("删除", role: .destructive) {
-                context.delete(event)
-                dismiss()
+                Button("关闭") { dismiss() }
             }
         }
     }
     
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(event.title)
-                    .font(.largeTitle.weight(.bold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                
-                Spacer()
-                
-                CategoryBadge(category: event.categoryEnum)
-            }
-            
-            Text("创建于 \(event.startDate.formatted(date: .abbreviated, time: .omitted))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding()
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-    
-    private var datesSection: some View {
-        LazyVGrid(columns: gridColumns, spacing: 16) {
-            InfoCard(title: "开始日期", value: event.startDate.formatted(date: .long, time: .omitted))
-            InfoCard(title: "目标日期", value: event.targetDate.formatted(date: .long, time: .omitted))
-            
-            if event.categoryEnum == .birthday {
-                InfoCard(title: "下一个周年日", value: event.nextTargetDate.formatted(date: .long, time: .omitted))
-                InfoCard(title: "已持续时间", value: "\(event.anniversaryYears)年\(event.anniversaryDays)天")
-                InfoCard(title: "总天数", value: "\(event.totalDaysPassed)天")
-            }
+        HStack {
+            Text(event.title)
+                .font(.largeTitle.bold())
+            Spacer()
         }
     }
     
-    private var progressSection: some View {
-        VStack(spacing: 16) {
-            Text(event.daysDisplay)
-                .font(.title2.weight(.medium))
-                .foregroundStyle(event.categoryEnum.color)
-            
-            ProgressView(value: progressValue)
-                .tint(event.categoryEnum.color)
-                .scaleEffect(x: 1, y: 2, anchor: .center)
-                .clipShape(Capsule())
-            
-            HStack {
-                Text("已过天数")
-                Spacer()
-                Text("\(abs(event.totalDaysPassed))")
-            }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+    private var dateInfoSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("起始日期：\(event.startDate.formatted(date: .long, time: .omitted))")
+            Text("目标日期：\(event.targetDate.formatted(date: .long, time: .omitted))")
+            Text("持续天数：\(event.totalDaysPassed) 天")
         }
+        .font(.subheadline)
         .padding()
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+    }
+    
+    private var categorySection: some View {
+        HStack {
+            Text("分类")
+                .font(.headline)
+            Spacer()
+            Text(event.category)
+                .padding(8)
+                .background(event.categoryEnum.color.opacity(0.2))
+                .cornerRadius(8)
+        }
     }
     
     private var notesSection: some View {
-        Group {
-            if !event.notes.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("备注")
-                        .font(.headline)
-                    Text(event.notes)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            Text("备注")
+                .font(.headline)
+            Text(event.notes)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
         }
-    }
-    
-    private var progressValue: Double {
-        let totalDays = max(Calendar.current.daysBetween(Date(), event.nextTargetDate), 1)
-        return Double(totalDays - event.daysRemaining) / Double(totalDays)
     }
 }
 
