@@ -81,7 +81,7 @@ enum EventCategory: String, CaseIterable {
 }
 
 @Model
-final class Event {
+final class Event: Hashable {
     var title: String
     var startDate: Date
     var targetDate: Date
@@ -169,6 +169,14 @@ final class Event {
         resetCache()
         print("\(title) 在 \(Date()) 重置缓存")
     }
+    
+    static func == (lhs: Event, rhs: Event) -> Bool {
+        lhs.id == rhs.id
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 extension Date {
@@ -245,12 +253,10 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(selectedCategory: $viewModel.selectedCategory)
         } detail: {
-            NavigationStack {
-                MainContentView(
-                    viewModel: viewModel,
-                    showingAddView: $showingAddView
-                )
-            }
+            MainContentView( // 移除内部多余的NavigationStack
+                viewModel: viewModel,
+                showingAddView: $showingAddView
+            )
         }
         .environment(viewModel)
     }
@@ -391,23 +397,60 @@ struct MainContentView: View {
     private var columns = [GridItem(.adaptive(minimum: 300))]
     
     var body: some View {
-        Group {
-            if viewModel.filteredEvents(events).isEmpty {
-                EmptyStateView(selectedCategory: viewModel.selectedCategory)
-            } else {
-                EventsGridView(events: viewModel.filteredEvents(events))
+        NavigationStack { // 添加顶层NavigationStack容器
+            Group {
+                if viewModel.filteredEvents(events).isEmpty {
+                    EmptyStateView(selectedCategory: viewModel.selectedCategory)
+                } else {
+                    EventsGridView(events: viewModel.filteredEvents(events))
+                }
+            }
+            .navigationDestination(for: Event.self) { event in // 移动到此位置
+                EventDetailView(event: event)
+            }
+            .navigationTitle("MemoDays")
+            .toolbar { TopToolbar(showingAddView: $showingAddView) }
+            .searchable(text: $viewModel.searchText, prompt: "搜索事件")
+            .sheet(isPresented: $showingAddView) {
+                AddEventView(defaultCategory: viewModel.selectedCategory ?? .general)
+                    .presentationDetents([.height(900)])
+                    .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(20)
+            }
+            .refreshHandlers(context: context, refreshManager: refreshManager)
+        }
+    }
+}
+
+// 添加完整的详情视图实现
+struct EventDetailView: View {
+    let event: Event
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text(event.title)
+                    .font(.title)
+                
+                VStack(alignment: .leading) {
+                    Text("起始日期：\(event.startDate.formatted(date: .long, time: .omitted))")
+                    Text("目标日期：\(event.targetDate.formatted(date: .long, time: .omitted))")
+                    Text("剩余天数：\(event.daysRemaining)")
+                }
+                
+                Text(event.notes)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding()
+        }
+        .navigationTitle("事件详情")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("关闭") { dismiss() }
             }
         }
-        .navigationTitle("MemoDays")
-        .toolbar { TopToolbar(showingAddView: $showingAddView) }
-        .searchable(text: $viewModel.searchText, prompt: "搜索事件")
-        .sheet(isPresented: $showingAddView) {
-            AddEventView(defaultCategory: viewModel.selectedCategory ?? .general)
-                .presentationDetents([.height(900)])
-                .presentationDragIndicator(.visible)
-                .presentationCornerRadius(20)
-        }
-        .refreshHandlers(context: context, refreshManager: refreshManager)
     }
 }
 
@@ -501,6 +544,7 @@ struct EventCardView: View, Equatable {
                     .onEnded { _ in isPressed = false }
             )
         }
+        // 移除原有的 .buttonStyle(.plain) 修饰符
         .buttonStyle(.plain)
         .contextMenu {
             Button("编辑", systemImage: "pencil") { showingEdit = true }
@@ -709,75 +753,6 @@ struct AddEventView: View {
             try context.save()
         } catch {
             print("保存失败：\(error)")
-        }
-    }
-}
-
-// MARK: - 详情视图
-struct EventDetailView: View {
-    let event: Event
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                headerSection
-                dateInfoSection
-                categorySection
-                notesSection
-            }
-            .padding()
-        }
-        .navigationTitle("事件详情")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("关闭") { dismiss() }
-            }
-        }
-    }
-    
-    private var headerSection: some View {
-        HStack {
-            Text(event.title)
-                .font(.largeTitle.bold())
-            Spacer()
-        }
-    }
-    
-    private var dateInfoSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("起始日期：\(event.startDate.formatted(date: .long, time: .omitted))")
-            Text("目标日期：\(event.targetDate.formatted(date: .long, time: .omitted))")
-            Text("持续天数：\(event.totalDaysPassed) 天")
-        }
-        .font(.subheadline)
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-    }
-    
-    private var categorySection: some View {
-        HStack {
-            Text("分类")
-                .font(.headline)
-            Spacer()
-            Text(event.category)
-                .padding(8)
-                .background(event.categoryEnum.color.opacity(0.2))
-                .cornerRadius(8)
-        }
-    }
-    
-    private var notesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("备注")
-                .font(.headline)
-            Text(event.notes)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(Color(.systemBackground))
-                .cornerRadius(12)
         }
     }
 }
